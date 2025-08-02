@@ -3,11 +3,7 @@ package migrate
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"slices"
-	"sort"
-	"strings"
 )
 
 // Logger is a logger interface, slog compatible
@@ -16,14 +12,14 @@ type Logger interface {
 }
 
 // RunMigrations executes all pending migrations
-func RunMigrations(ctx context.Context, dialect Dialect, migrationsPath string, logger Logger) error {
+func RunMigrations(ctx context.Context, source Source, dialect Dialect, logger Logger) error {
 	// Create migrations table if it doesn't exist
 	if err := dialect.CreateMigrationsTable(ctx); err != nil {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
 	// Get list of migration files
-	files, err := getMigrationFiles(migrationsPath)
+	files, err := source.GetMigrationFiles()
 	if err != nil {
 		return fmt.Errorf("failed to get migration files: %w", err)
 	}
@@ -36,46 +32,23 @@ func RunMigrations(ctx context.Context, dialect Dialect, migrationsPath string, 
 
 	// Apply pending migrations
 	for _, file := range files {
-		if slices.Contains(applied, file) {
+		if slices.Contains(applied, file.Version) {
 			continue
 		}
 
-		if err := applyMigration(ctx, dialect, migrationsPath, file); err != nil {
-			return fmt.Errorf("failed to apply migration %s: %w", file, err)
+		if err := applyMigration(ctx, file, dialect); err != nil {
+			return fmt.Errorf("failed to apply migration %s: %w", file.Version, err)
 		}
 
-		logger.Info("migrated", "file", file)
+		logger.Info("migrated", "file", file.Version)
 	}
 
 	return nil
 }
 
-func getMigrationFiles(migrationsPath string) ([]string, error) {
-	entries, err := os.ReadDir(migrationsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return []string{}, nil
-		}
-		return nil, err
-	}
-
-	var files []string
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".sql") {
-			files = append(files, entry.Name())
-		}
-	}
-
-	sort.Strings(files)
-	return files, nil
-}
-
-func applyMigration(ctx context.Context, dialect Dialect, migrationsPath, filename string) error {
-	// Read migration file
-	content, err := os.ReadFile(filepath.Join(migrationsPath, filename))
-	if err != nil {
-		return fmt.Errorf("failed to read migration file: %w", err)
-	}
+func applyMigration(ctx context.Context, migration Migration, dialect Dialect) error {
+	// The content is already in the Migration struct, so no need to read the file.
+	content := migration.Content
 
 	// Begin transaction
 	tx, err := dialect.BeginTx(ctx)
@@ -90,7 +63,7 @@ func applyMigration(ctx context.Context, dialect Dialect, migrationsPath, filena
 	}
 
 	// Record migration
-	if err := dialect.StoreAppliedMigration(ctx, tx, filename); err != nil {
+	if err := dialect.StoreAppliedMigration(ctx, tx, migration.Version); err != nil {
 		return fmt.Errorf("failed to record migration: %w", err)
 	}
 
