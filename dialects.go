@@ -27,6 +27,7 @@ type CommonTx interface {
 // CommonDialect is a common dialect for SQL
 type CommonDialect struct {
 	db                    *sql.DB
+	tableName             string
 	createMigrationsTable string
 	getAppliedMigrations  string
 	applyMigration        string
@@ -40,6 +41,7 @@ func NewCommonDialect(db *sql.DB, table string) *CommonDialect {
 	}
 
 	return &CommonDialect{db: db,
+		tableName: table,
 		createMigrationsTable: `
 		CREATE TABLE IF NOT EXISTS ` + table + ` (
 			version VARCHAR(255) PRIMARY KEY,
@@ -112,7 +114,7 @@ func NewSQLiteDialect(db *sql.DB, table string) *CommonDialect {
 	res := NewCommonDialect(db, table)
 
 	res.createMigrationsTable = `
-		CREATE TABLE IF NOT EXISTS ` + table + ` (
+		CREATE TABLE IF NOT EXISTS ` + res.tableName + ` (
 			version TEXT PRIMARY KEY,
 			applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
@@ -135,7 +137,7 @@ func NewPostgresDialect(db *sql.DB, table string) *PostgresDialect {
 	}
 
 	res.createMigrationsTable = `
-		CREATE TABLE IF NOT EXISTS ` + table + ` (
+		CREATE TABLE IF NOT EXISTS ` + res.tableName + ` (
 			version VARCHAR(255) PRIMARY KEY,
 			applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)
