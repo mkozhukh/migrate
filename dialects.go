@@ -10,6 +10,7 @@ type Dialect interface {
 	CreateMigrationsTable(ctx context.Context) error
 	GetAppliedMigrations(ctx context.Context) ([]string, error)
 	StoreAppliedMigration(ctx context.Context, tx CommonTx, version string) error
+	DeleteAppliedMigration(ctx context.Context, tx CommonTx, version string) error
 
 	BeginTx(ctx context.Context) (CommonTx, error)
 }
@@ -27,6 +28,7 @@ type CommonDialect struct {
 	createMigrationsTable string
 	getAppliedMigrations  string
 	applyMigration        string
+	deleteMigration       string
 }
 
 // NewCommonDialect creates a new common dialect
@@ -44,6 +46,7 @@ func NewCommonDialect(db *sql.DB, table string) *CommonDialect {
 	`,
 		getAppliedMigrations: `SELECT version FROM ` + table,
 		applyMigration:       `INSERT INTO ` + table + ` (version) VALUES (?)`,
+		deleteMigration:      `DELETE FROM ` + table + ` WHERE version = ?`,
 	}
 }
 
@@ -79,6 +82,12 @@ func (d CommonDialect) StoreAppliedMigration(ctx context.Context, tx CommonTx, v
 	return err
 }
 
+// DeleteAppliedMigration deletes the applied migration from the database
+func (d CommonDialect) DeleteAppliedMigration(ctx context.Context, tx CommonTx, version string) error {
+	_, err := tx.ExecContext(ctx, d.deleteMigration, version)
+	return err
+}
+
 // BeginTx begins a new transaction
 func (d CommonDialect) BeginTx(ctx context.Context) (CommonTx, error) {
 	return d.db.BeginTx(ctx, nil)
@@ -109,6 +118,7 @@ func NewPostgresDialect(db *sql.DB, table string) *CommonDialect {
 		)
 	`
 	res.applyMigration = `INSERT INTO ` + table + ` (version) VALUES ($1)`
+	res.deleteMigration = `DELETE FROM ` + table + ` WHERE version = $1`
 
 	return res
 }
