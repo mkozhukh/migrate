@@ -13,6 +13,8 @@ type Dialect interface {
 	DeleteAppliedMigration(ctx context.Context, tx CommonTx, version string) error
 
 	BeginTx(ctx context.Context) (CommonTx, error)
+	Lock(ctx context.Context) error
+	Unlock(ctx context.Context) error
 }
 
 // CommonTx is a common transaction interface for SQL
@@ -93,6 +95,18 @@ func (d CommonDialect) BeginTx(ctx context.Context) (CommonTx, error) {
 	return d.db.BeginTx(ctx, nil)
 }
 
+// Lock acquires a database-level lock.
+func (d CommonDialect) Lock(ctx context.Context) error {
+	// This is a no-op for dialects that don't support locking.
+	return nil
+}
+
+// Unlock releases the database-level lock.
+func (d CommonDialect) Unlock(ctx context.Context) error {
+	// This is a no-op for dialects that don't support locking.
+	return nil
+}
+
 // NewSQLiteDialect creates a new SQLite dialect
 func NewSQLiteDialect(db *sql.DB, table string) *CommonDialect {
 	res := NewCommonDialect(db, table)
@@ -107,9 +121,18 @@ func NewSQLiteDialect(db *sql.DB, table string) *CommonDialect {
 	return res
 }
 
+type PostgresDialect struct {
+	*CommonDialect
+	lockKey int
+}
+
 // NewPostgresDialect creates a new Postgres dialect
-func NewPostgresDialect(db *sql.DB, table string) *CommonDialect {
-	res := NewCommonDialect(db, table)
+func NewPostgresDialect(db *sql.DB, table string) *PostgresDialect {
+	res := &PostgresDialect{
+		CommonDialect: NewCommonDialect(db, table),
+		// python3 -c "print(abs(hash('github.com/mkozhukh/migrate/v1')))"
+		lockKey: 6492640049987603658,
+	}
 
 	res.createMigrationsTable = `
 		CREATE TABLE IF NOT EXISTS ` + table + ` (
@@ -121,4 +144,14 @@ func NewPostgresDialect(db *sql.DB, table string) *CommonDialect {
 	res.deleteMigration = `DELETE FROM ` + table + ` WHERE version = $1`
 
 	return res
+}
+
+func (d PostgresDialect) Lock(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, "SELECT pg_advisory_lock($1)", d.lockKey)
+	return err
+}
+
+func (d PostgresDialect) Unlock(ctx context.Context) error {
+	_, err := d.db.ExecContext(ctx, "SELECT pg_advisory_unlock($1)", d.lockKey)
+	return err
 }

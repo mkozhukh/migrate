@@ -18,6 +18,11 @@ func RunMigrations(ctx context.Context, source Source, dialect Dialect, logger L
 		return err
 	}
 
+	if err := dialect.Lock(ctx); err != nil {
+		return fmt.Errorf("failed to lock database: %w", err)
+	}
+	defer dialect.Unlock(ctx)
+
 	// Get list of migration files
 	files, err := source.GetMigrations()
 	if err != nil {
@@ -52,6 +57,11 @@ func RollbackMigrations(ctx context.Context, source Source, dialect Dialect, log
 	if err != nil {
 		return err
 	}
+
+	if err := dialect.Lock(ctx); err != nil {
+		return fmt.Errorf("failed to lock database: %w", err)
+	}
+	defer dialect.Unlock(ctx)
 
 	// Get all migration files from the source.
 	files, err := source.GetMigrations()
