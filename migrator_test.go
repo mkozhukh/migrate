@@ -2,7 +2,6 @@ package migrate
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
@@ -58,20 +57,20 @@ type MockTx struct {
 	rollbackErr    error
 }
 
-func (tx *MockTx) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+func (tx *MockTx) Exec(ctx context.Context, query string, args ...interface{}) error {
 	tx.execCalled = true
 	if tx.execErr != nil {
-		return nil, tx.execErr
+		return tx.execErr
 	}
-	return nil, nil
+	return nil
 }
 
-func (tx *MockTx) Commit() error {
+func (tx *MockTx) Commit(ctx context.Context) error {
 	tx.commitCalled = true
 	return tx.commitErr
 }
 
-func (tx *MockTx) Rollback() error {
+func (tx *MockTx) Rollback(ctx context.Context) error {
 	tx.rollbackCalled = true
 	return tx.rollbackErr
 }
@@ -84,6 +83,7 @@ type MockDialect struct {
 	lockCalled            bool
 	unlockCalled          bool
 	beginTxCalled         bool
+	execContextCalled     bool
 
 	appliedMigrations  []string
 	createTableErr     error
@@ -93,6 +93,7 @@ type MockDialect struct {
 	lockErr            error
 	unlockErr          error
 	beginTxErr         error
+	execContextErr     error
 
 	// For tracking what was stored/deleted
 	storedMigrations  []string
@@ -112,7 +113,7 @@ func (d *MockDialect) GetAppliedMigrations(ctx context.Context) ([]string, error
 	return d.appliedMigrations, nil
 }
 
-func (d *MockDialect) StoreAppliedMigration(ctx context.Context, tx CommonTx, version string) error {
+func (d *MockDialect) StoreAppliedMigration(ctx context.Context, tx Tx, version string) error {
 	d.storeMigrationCalled = true
 	d.storedMigrations = append(d.storedMigrations, version)
 	if d.storeMigrationErr != nil {
@@ -121,7 +122,7 @@ func (d *MockDialect) StoreAppliedMigration(ctx context.Context, tx CommonTx, ve
 	return nil
 }
 
-func (d *MockDialect) DeleteAppliedMigration(ctx context.Context, tx CommonTx, version string) error {
+func (d *MockDialect) DeleteAppliedMigration(ctx context.Context, tx Tx, version string) error {
 	d.deleteMigrationCalled = true
 	d.deletedMigrations = append(d.deletedMigrations, version)
 	if d.deleteMigrationErr != nil {
@@ -130,7 +131,7 @@ func (d *MockDialect) DeleteAppliedMigration(ctx context.Context, tx CommonTx, v
 	return nil
 }
 
-func (d *MockDialect) BeginTx(ctx context.Context) (CommonTx, error) {
+func (d *MockDialect) BeginTx(ctx context.Context) (Tx, error) {
 	d.beginTxCalled = true
 	if d.beginTxErr != nil {
 		return nil, d.beginTxErr
@@ -146,6 +147,11 @@ func (d *MockDialect) Lock(ctx context.Context) error {
 func (d *MockDialect) Unlock(ctx context.Context) error {
 	d.unlockCalled = true
 	return d.unlockErr
+}
+
+func (d *MockDialect) ExecContext(ctx context.Context, query string, args ...interface{}) error {
+	d.execContextCalled = true
+	return d.execContextErr
 }
 
 // Helper function to create test migrations

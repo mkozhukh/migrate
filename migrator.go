@@ -230,7 +230,7 @@ func (m *Migrator) prepareData(ctx context.Context, steps int, after func(ctx co
 	return after(ctx, steps, applied, migrations, options)
 }
 
-func (m *Migrator) applyMigrations(ctx context.Context, content []byte, name string, after func(tx CommonTx) error) error {
+func (m *Migrator) applyMigrations(ctx context.Context, content []byte, name string, after func(tx Tx) error) error {
 	if len(content) == 0 {
 		return fmt.Errorf("no content to apply for migration: %s", name)
 	}
@@ -240,10 +240,10 @@ func (m *Migrator) applyMigrations(ctx context.Context, content []byte, name str
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer tx.Rollback(ctx)
 
 	// Execute migration
-	if _, err = tx.ExecContext(ctx, string(content)); err != nil {
+	if err = tx.Exec(ctx, string(content)); err != nil {
 		return fmt.Errorf("failed to execute migration: %w", err)
 	}
 
@@ -254,17 +254,17 @@ func (m *Migrator) applyMigrations(ctx context.Context, content []byte, name str
 	}
 
 	// Commit transaction
-	return tx.Commit()
+	return tx.Commit(ctx)
 }
 
 func (m *Migrator) commitMigration(ctx context.Context, migration Migration) error {
-	return m.applyMigrations(ctx, migration.Content, migration.Version, func(tx CommonTx) error {
+	return m.applyMigrations(ctx, migration.Content, migration.Version, func(tx Tx) error {
 		return m.dialect.StoreAppliedMigration(ctx, tx, migration.Version)
 	})
 }
 
 func (m *Migrator) rollbackMigration(ctx context.Context, migration Migration) error {
-	return m.applyMigrations(ctx, migration.DownContent, migration.Version, func(tx CommonTx) error {
+	return m.applyMigrations(ctx, migration.DownContent, migration.Version, func(tx Tx) error {
 		return m.dialect.DeleteAppliedMigration(ctx, tx, migration.Version)
 	})
 }
